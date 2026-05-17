@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ID Pro 3×4 | Gestor de Fotos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+        :root {
+            --primary: #c8f55a;
+            --primary-dark: #a8d040;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #09090b;
+            color: #f4f4f5;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        
+        .glass {
+            background: rgba(24, 24, 27, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(63, 63, 70, 0.5);
+        }
+
+        .photo-container {
+            aspect-ratio: 175 / 250;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* PRINT STYLES - Medidas exatas conforme modelo enviado */
+        @media print {
+            @page {
+                size: A4;
+                margin: 1cm;
+            }
+            body { background: white !important; color: black !important; padding: 0 !important; margin: 0 !important; }
+            header, .no-print, #configPanel, .toolbar-section { display: none !important; }
+            
+            #grid { 
+                display: grid !important; 
+                /* 10 colunas para caber como no PDF */
+                grid-template-columns: repeat(10, 17.5mm) !important;
+                gap: 2mm !important; 
+                padding: 0 !important;
+                margin: 0 auto !important;
+                width: 100% !important;
+            }
+
+            .card { 
+                display: flex !important;
+                flex-direction: column !important;
+                width: 17.5mm !important;
+                height: 30mm !important; /* 25mm foto + 5mm nome */
+                border: none !important;
+                box-shadow: none !important;
+                break-inside: avoid;
+                margin: 0 !important;
+                background: white !important;
+                border-radius: 0 !important;
+            }
+
+            .photo-container {
+                width: 17.5mm !important;
+                height: 25mm !important;
+                overflow: hidden !important;
+                border-radius: 0 !important;
+            }
+
+            .card-img { 
+                width: 17.5mm !important; 
+                height: 25mm !important; 
+                object-fit: cover !important;
+                filter: none !important;
+                grayscale: 0 !important;
+            }
+
+            .card-body {
+                height: 5mm !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                padding: 0 !important;
+                background: white !important;
+            }
+
+            .card-name { 
+                color: black !important; 
+                font-size: 5pt !important; /* Fonte pequena para caber em 17.5mm */
+                text-align: center !important;
+                line-height: 1 !important;
+                white-space: normal !important;
+                word-break: break-word !important;
+                display: -webkit-box !important;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+            }
+
+            .card-num, .card-tag-print { display: none !important; }
+            .card.already-printed { display: none !important; }
+        }
+
+        /* Estilo para a Web */
+        .card-body { padding: 8px; }
+        .card-name { font-size: 0.75rem; font-weight: 600; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+<header class="sticky top-0 z-50 glass border-b border-zinc-800 px-6 py-4 no-print">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="bg-[#c8f55a] text-black p-2 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold tracking-tight uppercase mono text-[#c8f55a]">ID Pro 3×4</h1>
+                <p class="text-[10px] text-zinc-500 mono" id="statsDisplay">Carregando...</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <button onclick="toggleConfig()" class="p-2 hover:bg-zinc-800 rounded-full transition-colors text-zinc-400 hover:text-white" title="Configurações">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+            <button onclick="printGrid()" class="bg-white hover:bg-zinc-200 text-black px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-white/5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1-2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                IMPRIMIR MODELO PDF
+            </button>
+        </div>
+    </div>
+</header>
+
+<main class="max-w-7xl mx-auto p-6">
+    
+    <section id="configPanel" class="mb-8 glass rounded-2xl p-6 hidden no-print">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xs font-bold tracking-widest uppercase text-zinc-500 mono">Configuração da Planilha</h2>
+            <button onclick="toggleConfig()" class="text-zinc-500 hover:text-white">✕</button>
+        </div>
+
+        <div class="grid md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-zinc-500 mono uppercase">ID da Planilha</label>
+                <input type="text" id="sheetId" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm mono focus:border-[#c8f55a] outline-none transition-all" />
+            </div>
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-zinc-500 mono uppercase">GID (Aba)</label>
+                <input type="text" id="sheetGid" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm mono focus:border-[#c8f55a] outline-none transition-all" value="0" />
+            </div>
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-zinc-500 mono uppercase">Coluna Nome</label>
+                <input type="text" id="colName" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm mono focus:border-[#c8f55a] outline-none transition-all" />
+            </div>
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-zinc-500 mono uppercase">Coluna Foto</label>
+                <input type="text" id="colPhoto" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm mono focus:border-[#c8f55a] outline-none transition-all" />
+            </div>            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-zinc-500 mono uppercase">Coluna Status (Impresso?)</label>
+                <input type="text" id="colStatus" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm mono focus:border-[#c8f55a] outline-none transition-all" placeholder="Ex: Impresso?" />
+            </div>            </div>
+        </div>
+
+        <div class="mt-6 flex flex-wrap gap-3 items-center">
+            <button onclick="loadData()" class="bg-[#c8f55a] hover:bg-[#a8d040] text-black px-6 py-2.5 rounded-lg text-xs font-bold transition-all">CARREGAR DADOS</button>
+            <button onclick="detectCols()" class="border border-zinc-700 hover:border-zinc-500 text-zinc-300 px-4 py-2.5 rounded-lg text-xs font-medium transition-all">VER COLUNAS</button>
+            <button onclick="clearCache()" class="text-zinc-500 hover:text-red-400 text-[10px] mono ml-auto">LIMPAR TUDO</button>
+        </div>
+
+        <div id="colChips" class="mt-6 flex flex-wrap gap-2"></div>
+    </section>
+
+    <section class="mb-8 flex flex-wrap items-center gap-4 no-print toolbar-section">
+        <div class="relative flex-1 min-w-[280px]">
+            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            </span>
+            <input type="text" id="searchInput" oninput="handleSearch()" placeholder="Pesquisar por nome..." class="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm focus:bg-zinc-900 focus:border-zinc-600 outline-none transition-all" />
+        </div>
+
+        <div class="flex items-center gap-2 glass px-4 py-2 rounded-xl border-zinc-800">
+            <label class="text-[10px] font-bold text-zinc-500 mono">PREVIEW</label>
+            <input type="range" min="80" max="250" value="160" step="10" oninput="resizeCards(this.value)" class="w-24 accent-[#c8f55a]" />
+        </div>
+
+        <select id="sortOrder" onchange="handleSort()" class="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 text-xs mono outline-none focus:border-zinc-600">
+            <option value="index">Ordem da Planilha</option>
+            <option value="name">Nome (A-Z)</option>
+        </select>
+    </section>
+
+    <div id="status" class="no-print"></div>
+    
+    <div id="grid" class="grid grid-cols-[repeat(auto-fill,minmax(var(--card-size,160px),1fr))] gap-4">
+        <!-- Cards dinâmicos -->
+    </div>
+
+</main>
+
+<script>
+let allPeople = [];
+let currentFilter = '';
+let currentSort = 'index';
+
+const CONFIG_KEYS = ['sheetId', 'sheetGid', 'colName', 'colPhoto', 'colStatus'];
+
+window.onload = () => {
+    loadSavedConfig();
+    if (document.getElementById('sheetId').value && document.getElementById('colName').value) {
+        loadData();
+    } else {
+        toggleConfig(true);
+    }
+};
+
+function loadSavedConfig() {
+    CONFIG_KEYS.forEach(key => {
+        const saved = localStorage.getItem(`idpro_v2_${key}`);
+        if (saved) document.getElementById(key).value = saved;
+    });
+}
+
+function saveConfig() {
+    CONFIG_KEYS.forEach(key => {
+        localStorage.setItem(`idpro_v2_${key}`, document.getElementById(key).value.trim());
+    });
+}
+
+function clearCache() {
+    CONFIG_KEYS.forEach(key => localStorage.removeItem(`idpro_v2_${key}`));
+    location.reload();
+}
+
+function toggleConfig(forceOpen = false) {
+    const el = document.getElementById('configPanel');
+    if (forceOpen) el.classList.remove('hidden');
+    else el.classList.toggle('hidden');
+}
+
+function resizeCards(val) {
+    document.documentElement.style.setProperty('--card-size', val + 'px');
+}
+
+async function printGrid() {
+    // Pré-carrega somente as imagens dos cards que irão para impressão
+    const imgs = Array.from(document.querySelectorAll('#grid .card:not(.already-printed) img.card-img'));
+    imgs.forEach(img => {
+        if (img.hasAttribute('loading')) img.removeAttribute('loading');
+        try { img.loading = 'eager'; } catch (e) {}
+        // force a reload in some browsers
+        if (!img.complete || img.naturalWidth === 0) {
+            const src = img.src;
+            if (src) img.src = src;
+        }
+    });
+
+    const loads = imgs.map(img => {
+        if (img.complete && img.naturalWidth !== 0) return Promise.resolve();
+        return new Promise(resolve => {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+        });
+    });
+
+    // espera as imagens (ou timeout de 8s)
+    await Promise.race([Promise.all(loads), new Promise(resolve => setTimeout(resolve, 8000))]);
+    window.print();
+}
+
+async function fetchSheet() {
+    const id = document.getElementById('sheetId').value.trim();
+    const gid = document.getElementById('sheetGid').value.trim();
+    if (!id) throw new Error("ID da planilha vazio.");
+    
+    const url = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json&gid=${gid}`;
+    const res = await fetch(url);
+    const text = await res.text();
+    const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
+    return json;
+}
+
+function getDriveThumb(url) {
+    if (!url || typeof url !== 'string') return null;
+    
+    url = url.trim();
+    if (!url) return null;
+    
+    // Suporta vários formatos de URL do Google Drive
+    const patterns = [
+        /\/file\/d\/([-\w]+)/,                    // /file/d/ID/view
+        /[?&]id=([-\w]+)/,                        // ?id=ID
+        /\/d\/([-\w]+)/,                          // /d/ID
+        /open\?id=([-\w]+)/,                      // open?id=ID
+    ];
+    
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1] && match[1].length > 15) {      // Google Drive IDs têm mais de 15 caracteres
+            return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w600`;
+        }
+    }
+    
+    // Se for URL direta com protocolo http/https válida
+    if (/^https?:\/\/.{10,}/.test(url)) {
+        return url;
+    }
+    
+    return null;
+}
+
+async function detectCols() {
+    const chipsEl = document.getElementById('colChips');
+    chipsEl.innerHTML = '<p class="text-xs text-zinc-500 animate-pulse">Lendo planilha...</p>';
+    try {
+        const json = await fetchSheet();
+        const cols = json.table.cols.map(c => c.label).filter(Boolean);
+        chipsEl.innerHTML = '';
+        cols.forEach(col => {
+            const btn = document.createElement('button');
+            btn.className = "px-3 py-1 bg-zinc-800 border border-zinc-700 rounded-full text-[10px] hover:border-[#c8f55a] hover:text-[#c8f55a] transition-all";
+            btn.textContent = col;
+            btn.onclick = () => {
+                const n = document.getElementById('colName');
+                const p = document.getElementById('colPhoto');
+                if (!n.value) n.value = col; else p.value = col;
+                saveConfig();
+            };
+            chipsEl.appendChild(btn);
+        });
+    } catch (e) {
+        chipsEl.innerHTML = `<p class="text-xs text-red-400">Erro: Planilha deve estar pública ("Qualquer pessoa com o link").</p>`;
+    }
+}
+
+async function loadData() {
+    saveConfig();
+    const colName = document.getElementById('colName').value.trim();
+    const colPhoto = document.getElementById('colPhoto').value.trim();
+    const colStatus = document.getElementById('colStatus').value.trim();
+    const statusEl = document.getElementById('status');
+
+    if (!colName || !colPhoto) {
+        statusEl.innerHTML = `<div class="p-4 bg-red-900/20 border border-red-900 text-red-400 rounded-xl mb-6 text-sm">Preencha as colunas primeiro.</div>`;
+        return;
+    }
+
+    statusEl.innerHTML = `<div class="flex items-center gap-3 text-zinc-400 mb-8"><div class="w-4 h-4 border-2 border-[#c8f55a] border-t-transparent rounded-full animate-spin"></div> Buscando dados...</div>`;
+
+    try {
+        const json = await fetchSheet();
+        const labels = json.table.cols.map(c => (c.label || '').toLowerCase());
+        const nIdx = labels.indexOf(colName.toLowerCase());
+        const pIdx = labels.indexOf(colPhoto.toLowerCase());
+        const sIdx = colStatus ? labels.indexOf(colStatus.toLowerCase()) : -1;
+
+        if (nIdx === -1 || pIdx === -1) throw new Error("Colunas não encontradas.");
+
+        allPeople = json.table.rows.map((row, i) => ({
+            id: i + 1,
+            name: row.c[nIdx]?.v || "Sem Nome",
+            photo: getDriveThumb(row.c[pIdx]?.v || row.c[pIdx]?.f || ''),
+            status: sIdx > -1 ? (row.c[sIdx]?.v || '') : '',
+        })).filter(p => p.name !== "Sem Nome" && p.photo !== null);
+
+
+        // Remove duplicatas (mantém a primeira ocorrência de cada nome)
+        const seen = new Set();
+        allPeople = allPeople.filter(p => {
+            const key = p.name.trim().toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+
+        statusEl.innerHTML = '';
+        document.getElementById('statsDisplay').textContent = `${allPeople.length} pessoas encontradas`;
+        render();
+    } catch (e) {
+        statusEl.innerHTML = `<div class="p-4 bg-red-900/20 border border-red-900 text-red-400 rounded-xl mb-6 text-sm">Erro: ${e.message}</div>`;
+    }
+}
+
+function handleSearch() {
+    currentFilter = document.getElementById('searchInput').value.toLowerCase();
+    render();
+}
+
+function handleSort() {
+    currentSort = document.getElementById('sortOrder').value;
+    render();
+}
+
+function render() {
+    const grid = document.getElementById('grid');
+    let filtered = allPeople.filter(p => p.name.toLowerCase().includes(currentFilter));
+
+    if (currentSort === 'name') filtered.sort((a,b) => a.name.localeCompare(b.name));
+    else filtered.sort((a,b) => a.id - b.id);
+
+    grid.innerHTML = filtered.map((p, idx) => `
+        <div class="card group glass rounded-xl overflow-hidden transition-all animate-fade-in ${ (p.status && String(p.status).trim().toLowerCase() === 'sim') ? 'already-printed' : '' }" style="animation-delay: ${idx * 0.01}s">
+            <div class="photo-container bg-zinc-950">
+                ${p.photo ? `
+                    <img src="${p.photo}" class="card-img w-full h-full object-cover" loading="lazy">
+                ` : `<div class="flex items-center justify-center h-full text-zinc-800 italic text-[10px]">Sem Foto</div>`}
+            </div>
+            <div class="card-body">
+                <p class="card-name truncate text-zinc-200" title="${p.name}">${p.name}</p>
+                <span class="card-num text-[9px] mono text-zinc-500 block no-print">#${p.id}</span>
+            </div>
+        </div>
+    `).join('');
+}
+</script>
+</body>
+</html>
